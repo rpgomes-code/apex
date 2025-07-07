@@ -3,10 +3,10 @@ import {
   Logger,
   OnModuleInit,
   OnModuleDestroy,
-} from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
-import { Kafka, Producer, Consumer } from "kafkajs";
-import { KafkaMessage } from "../../common/interfaces/event.interface";
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Kafka, Producer, Consumer } from 'kafkajs';
+import { KafkaMessage } from '../../common/interfaces/event.interface';
 
 @Injectable()
 export class KafkaService implements OnModuleInit, OnModuleDestroy {
@@ -14,14 +14,21 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
   private kafka: Kafka;
   private producer: Producer;
   private consumers: Map<string, Consumer> = new Map();
+  private isConnected = false;
 
   constructor(private readonly configService: ConfigService) {
+    const brokers = this.configService.get<string[]>('kafka.brokers') || [
+      'kafka:9092',
+    ];
+    this.logger.log(`Initializing Kafka with brokers: ${brokers.join(', ')}`);
+
     this.kafka = new Kafka({
-      clientId: this.configService.get<string>("kafka.clientId"),
-      brokers: this.configService.get<string[]>("kafka.brokers") ?? [],
+      clientId: this.configService.get<string>('kafka.clientId') || 'apex-api',
+      brokers,
       retry: {
-        initialRetryTime: 100,
-        retries: 8,
+        initialRetryTime: 1000,
+        retries: 3,
+        maxRetryTime: 5000,
       },
     });
 
@@ -34,31 +41,39 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     try {
+      this.logger.log('Attempting to connect to Kafka...');
       await this.producer.connect();
-      this.logger.log("Kafka producer connected successfully");
+      this.isConnected = true;
+      this.logger.log('✅ Kafka producer connected successfully');
     } catch (error) {
-      this.logger.error("Failed to connect Kafka producer", error);
-      throw error;
+      this.isConnected = false;
+      this.logger.warn(
+        '⚠️  Failed to connect to Kafka - continuing without Kafka functionality',
+      );
+      this.logger.warn(`Kafka error: ${error.message}`);
+      // Don't throw - allow app to start
     }
   }
 
   async onModuleDestroy() {
     try {
-      await this.producer.disconnect();
-
-      // Disconnect all consumers
-      for (const [groupId, consumer] of this.consumers) {
-        await consumer.disconnect();
-        this.logger.log(`Kafka consumer ${groupId} disconnected`);
+      if (this.isConnected) {
+        await this.producer.disconnect();
       }
-
-      this.logger.log("Kafka connections closed");
+      this.logger.log('Kafka connections closed');
     } catch (error) {
-      this.logger.error("Error disconnecting Kafka", error);
+      this.logger.error('Error disconnecting Kafka', error);
     }
   }
 
   async publish(topic: string, message: KafkaMessage): Promise<void> {
+    if (!this.isConnected) {
+      this.logger.warn(
+        `Kafka not connected - skipping publish to topic: ${topic}`,
+      );
+      return;
+    }
+
     try {
       await this.producer.send({
         topic,
@@ -75,21 +90,10 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
       this.logger.debug(`Message published to topic: ${topic}`);
     } catch (error) {
       this.logger.error(`Failed to publish message to topic ${topic}`, error);
-      throw error;
     }
   }
 
-  async createConsumer(groupId: string): Promise<Consumer> {
-    const consumer = this.kafka.consumer({ groupId });
-    this.consumers.set(groupId, consumer);
-
-    await consumer.connect();
-    this.logger.log(`Kafka consumer created for group: ${groupId}`);
-
-    return consumer;
-  }
-
-  getTopics() {
-    return this.configService.get("kafka.topics");
+  isKafkaConnected(): boolean {
+    return this.isConnected;
   }
 }

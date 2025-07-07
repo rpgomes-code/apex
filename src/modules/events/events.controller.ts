@@ -1,8 +1,15 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from "@nestjs/common";
-import { EventsService } from "./events.service";
-import { CreateEventDto } from "../../common/dto/create-event.dto";
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import { EventsService } from './events.service';
+import { CreateEventDto } from '../../common/dto/create-event.dto';
 
-@Controller("events")
+@Controller('events')
 export class EventsController {
   constructor(private readonly eventsService: EventsService) {}
 
@@ -12,12 +19,12 @@ export class EventsController {
     return this.eventsService.publishEvent(createEventDto);
   }
 
-  @Post("health")
+  @Get('health')
   @HttpCode(HttpStatus.OK)
   healthCheck() {
     return {
-      status: "ok",
-      service: "events",
+      status: 'ok',
+      service: 'events',
       timestamp: new Date().toISOString(),
     };
   }

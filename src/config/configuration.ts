@@ -3,7 +3,7 @@
   nodeEnv: process.env.NODE_ENV || "development",
 
   kafka: {
-    brokers: process.env.KAFKA_BROKERS?.split(",") || ["localhost:9092"],
+    brokers: process.env.KAFKA_BROKERS?.split(",") || ["kafka:9092"],
     clientId: process.env.KAFKA_CLIENT_ID || "apex-api",
     topics: {
       commands: "isomeg-commands",
